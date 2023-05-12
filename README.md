@@ -13,6 +13,21 @@ cd godnsbl/cmd/godnsbl
 go run main.go 127.0.0.2
 ```
 
+## Usage
+
+```
+Usage of godnsbl:
+  -ip string
+        Ip or domain to search
+  -threshold int
+        The number of listed block lists before stopping lookups,0 for all
+  -tmout string
+        Duration string (5s, 50ms,etc)
+
+godnsbl --ip 8.42.77.170 --threshold 1 --tmout=75ms
+```
+
+
 The output will be a JSON-formatted list of results with the following fields:
 
 ```

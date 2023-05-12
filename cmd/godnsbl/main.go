@@ -1,9 +1,9 @@
 package main
 
 import (
-//	"encoding/json"
+	"encoding/json"
 	"fmt"
-//	"log"
+	"log"
     "time"
 	"os"
     "flag"
@@ -40,9 +40,10 @@ func main() {
 
     results := godnsbl.BulkLookup(ip,thold,pdur)
 
-	for _,r := range results {
 
-		fmt.Printf("%+v\n",r)
-
+	enc := json.NewEncoder(os.Stdout)
+	if err := enc.Encode(&results); err != nil {
+		log.Println(err)
 	}
+
 }
