@@ -11,12 +11,18 @@ import (
 	"net"
 	"strings"
 	"regexp"
+	"sync"
+	"time"
 )
 
 /*
 Blacklists is the list of blackhole lists to check against
 */
 var Blacklists = []string{
+	"xbl.spamhaus.org",
+	"sbl.spamhaus.org",
+	"zen.spamhaus.org",
+	"pbl.spamhaus.org",
 	"aspews.ext.sorbs.net",
 	"b.barracudacentral.org",
 	"bl.deadbeef.com",
@@ -59,7 +65,6 @@ var Blacklists = []string{
 	"osrs.dnsbl.net.au",
 	"owfs.dnsbl.net.au",
 	"owps.dnsbl.net.au",
-	"pbl.spamhaus.org",
 	"phishing.rbl.msrbl.net",
 	"probes.dnsbl.net.au",
 	"proxy.bl.gweep.ca",
@@ -72,7 +77,6 @@ var Blacklists = []string{
 	"residential.block.transip.nl",
 	"ricn.dnsbl.net.au",
 	"rmst.dnsbl.net.au",
-	"sbl.spamhaus.org",
 	"short.rbl.jp",
 	"smtp.dnsbl.sorbs.net",
 	"socks.dnsbl.sorbs.net",
@@ -92,8 +96,6 @@ var Blacklists = []string{
 	"virus.rbl.msrbl.net",
 	"web.dnsbl.sorbs.net",
 	"wormrbl.imp.ch",
-	"xbl.spamhaus.org",
-	"zen.spamhaus.org",
 	"zombie.dnsbl.sorbs.net"}
 
 /*
@@ -179,11 +181,13 @@ func query(rbl string, host string, r *Result) {
 /*
 Lookup performs the search and returns the RBLResults
 */
-func Lookup(rblList string, targetHost string) (r RBLResults) {
+func Lookup(rblList string, targetHost string) (RBLResults) {
+    r  := RBLResults{}
 	r.List = rblList
 	r.Host = targetHost
 
 	if ip, err := net.LookupIP(targetHost); err == nil {
+
 		for _, addr := range ip {
 			if addr.To4() != nil {
 				res := Result{}
@@ -193,11 +197,89 @@ func Lookup(rblList string, targetHost string) (r RBLResults) {
 
 				query(rblList, addr, &res)
 
-				r.Results = append(r.Results, res)
+				if len(res.Rbl) > 0 {
+
+					r.Results = append(r.Results, res)
+
+				}
 			}
 		}
-	} else {
-		r.Results = append(r.Results, Result{})
+
+
 	}
-	return
+	return r
+}
+
+/*
+ip: ip to lookup
+threshold: the limit of entries that are listed to stop on, ie if 1 the first found will stop looking and return
+dur: Timeout period to abort looking
+*/
+
+func BulkLookup(ip string,threshold int,dur time.Duration) ([]Result) {
+
+	wg := &sync.WaitGroup{}
+	done := make(chan bool)
+	lookupResult := make(chan Result)
+	var results []Result
+	waitCh := make(chan struct{})
+	timeLimit := make(chan struct{})
+
+
+	//handle a duration if it's greater than default (0)
+	if dur > 0 {
+		go func() {
+			time.Sleep(dur)
+			close(timeLimit)
+		}()
+	}
+
+	for i, source := range Blacklists {
+		wg.Add(1)
+		go func(i int, source string) {
+			defer wg.Done()
+			rbl := Lookup(source, ip)
+			for _, rb := range rbl.Results {
+				if len(rb.Rbl)>0 {
+					lookupResult <- rb
+				}
+			}
+		}(i, source)
+	}
+
+
+	//this block ensures that we will exit if everything is done.
+	go func(){
+
+		wg.Wait()
+		close(waitCh)
+
+	}()
+
+    var tctr int
+	check := true
+
+	for {
+
+		if tctr>=threshold && threshold>0 && check==true {
+			close(done)
+			check = false
+		}
+
+		select {
+		case res := <-lookupResult:
+			if res.Listed == true {
+				tctr++
+			}
+			if len(res.Rbl) > 0 {
+				results = append(results,res)
+			}
+		case <-done:
+			return results
+		case <-timeLimit:
+			return results
+		case <-waitCh:
+			return results
+		}
+	}
 }

@@ -1,44 +1,48 @@
 package main
 
 import (
-	"encoding/json"
-
+//	"encoding/json"
 	"fmt"
-	"log"
+//	"log"
+    "time"
 	"os"
-	"sync"
-
+    "flag"
 	"github.com/mrichman/godnsbl"
 )
 
+var thold int
+var ip string
+var dur string
+
+func init(){
+    flag.StringVar(&ip,"ip","","Ip or domain to search")
+	flag.IntVar(&thold,"threshold",0,"The number of listed block lists before stopping lookups,0 for all")
+	flag.StringVar(&dur,"tmout","","Golang duration string (5s, 50ms,etc)")
+}
+
 func main() {
 
-	if len(os.Args) != 2 {
+
+	if len(os.Args)  < 2 {
 		fmt.Println("Please supply a domain name or IP address.")
 		os.Exit(1)
 	}
 
-	ip := os.Args[1]
+    flag.Parse()
 
-	wg := &sync.WaitGroup{}
-	results := make([]godnsbl.Result, len(godnsbl.Blacklists))
-	for i, source := range godnsbl.Blacklists {
-		wg.Add(1)
-		go func(i int, source string) {
-			defer wg.Done()
-			rbl := godnsbl.Lookup(source, ip)
-			if len(rbl.Results) == 0 {
-				results[i] = godnsbl.Result{}
-			} else {
-				results[i] = rbl.Results[0]
-			}
-		}(i, source)
+	pdur,pd := time.ParseDuration(dur)
+
+	if pd != nil {
+
+		pdur = 0
+
 	}
 
-	wg.Wait()
+    results := godnsbl.BulkLookup(ip,thold,pdur)
 
-	enc := json.NewEncoder(os.Stdout)
-	if err := enc.Encode(&results); err != nil {
-		log.Println(err)
+	for _,r := range results {
+
+		fmt.Printf("%+v\n",r)
+
 	}
 }
