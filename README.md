@@ -20,9 +20,9 @@ Usage of godnsbl:
   -ip string
         Ip or domain to search
   -threshold int
-        The number of listed block lists before stopping lookups,0 for all
+        The number of listed blocks that are true before stopping lookups,0 for all
   -tmout string
-        Duration string (5s, 50ms,etc)
+        Duration string (5s, 50ms,etc), stop looking up after this timeout period
 
 godnsbl --ip 8.42.77.170 --threshold 1 --tmout=75ms
 ```
