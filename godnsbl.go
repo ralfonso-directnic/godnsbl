@@ -9,8 +9,8 @@ package godnsbl
 import (
 	"fmt"
 	"net"
-	"strings"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,6 +18,8 @@ import (
 /*
 Blacklists is the list of blackhole lists to check against
 */
+var skip []string
+
 var Blacklists = []string{
 	"xbl.spamhaus.org",
 	"sbl.spamhaus.org",
@@ -134,6 +136,13 @@ type Result struct {
 Reverse the octets of a given IPv4 address
 64.233.171.108 becomes 108.171.233.64
 */
+
+func SkipList(skip_src []string) {
+
+	skip = skip_src
+
+}
+
 func Reverse(ip net.IP) string {
 	if ip.To4() == nil {
 		return ""
@@ -157,8 +166,8 @@ func query(rbl string, host string, r *Result) {
 	res, err := net.LookupHost(lookup)
 	if len(res) > 0 {
 
-		for _, ip := range res{
-			m, _ := regexp.MatchString("^127.0.0.*", ip) 
+		for _, ip := range res {
+			m, _ := regexp.MatchString("^127.0.0.*", ip)
 
 			if m == true {
 				r.Listed = true
@@ -181,8 +190,8 @@ func query(rbl string, host string, r *Result) {
 /*
 Lookup performs the search and returns the RBLResults
 */
-func Lookup(rblList string, targetHost string) (RBLResults) {
-    r  := RBLResults{}
+func Lookup(rblList string, targetHost string) RBLResults {
+	r := RBLResults{}
 	r.List = rblList
 	r.Host = targetHost
 
@@ -205,7 +214,6 @@ func Lookup(rblList string, targetHost string) (RBLResults) {
 			}
 		}
 
-
 	}
 	return r
 }
@@ -216,7 +224,7 @@ threshold: the limit of entries that are listed to stop on, ie if 1 the first fo
 dur: Timeout period to abort looking
 */
 
-func BulkLookup(ip string,threshold int,dur time.Duration) ([]Result) {
+func BulkLookup(ip string, threshold int, dur time.Duration) []Result {
 
 	wg := &sync.WaitGroup{}
 	done := make(chan bool)
@@ -224,7 +232,6 @@ func BulkLookup(ip string,threshold int,dur time.Duration) ([]Result) {
 	var results []Result
 	waitCh := make(chan struct{})
 	timeLimit := make(chan struct{})
-
 
 	//handle a duration if it's greater than default (0)
 	if dur > 0 {
@@ -235,33 +242,37 @@ func BulkLookup(ip string,threshold int,dur time.Duration) ([]Result) {
 	}
 
 	for i, source := range Blacklists {
+
+		if inSlice(skip, source) {
+			continue // skip a list
+		}
+
 		wg.Add(1)
 		go func(i int, source string) {
 			defer wg.Done()
 			rbl := Lookup(source, ip)
 			for _, rb := range rbl.Results {
-				if len(rb.Rbl)>0 {
+				if len(rb.Rbl) > 0 {
 					lookupResult <- rb
 				}
 			}
 		}(i, source)
 	}
 
-
 	//this block ensures that we will exit if everything is done.
-	go func(){
+	go func() {
 
 		wg.Wait()
 		close(waitCh)
 
 	}()
 
-    var tctr int
+	var tctr int
 	check := true
 
 	for {
 
-		if tctr>=threshold && threshold>0 && check==true {
+		if tctr >= threshold && threshold > 0 && check == true {
 			close(done)
 			check = false
 		}
@@ -272,7 +283,7 @@ func BulkLookup(ip string,threshold int,dur time.Duration) ([]Result) {
 				tctr++
 			}
 			if len(res.Rbl) > 0 {
-				results = append(results,res)
+				results = append(results, res)
 			}
 		case <-done:
 			return results
@@ -282,4 +293,14 @@ func BulkLookup(ip string,threshold int,dur time.Duration) ([]Result) {
 			return results
 		}
 	}
+}
+
+func inSlice(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+
+	return false
 }
