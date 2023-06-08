@@ -227,17 +227,18 @@ dur: Timeout period to abort looking
 func BulkLookup(ip string, threshold int, dur time.Duration) []Result {
 
 	wg := &sync.WaitGroup{}
-	done := make(chan bool)
-	lookupResult := make(chan Result)
+	lookupResult := make(chan Result,len(Blacklists))
 	var results []Result
-	waitCh := make(chan struct{})
-	timeLimit := make(chan struct{})
+	timeLimit := make(chan bool,2)
+	finished := make(chan bool,2)
 
 	//handle a duration if it's greater than default (0)
 	if dur > 0 {
 		go func() {
-			time.Sleep(dur)
-			close(timeLimit)
+			select {
+			case <-time.After(dur):
+				timeLimit <- true
+			}
 		}()
 	}
 
@@ -253,31 +254,34 @@ func BulkLookup(ip string, threshold int, dur time.Duration) []Result {
 			rbl := Lookup(source, ip)
 			for _, rb := range rbl.Results {
 				if len(rb.Rbl) > 0 {
-					lookupResult <- rb
+					select {
+					case lookupResult <- rb:
+						break
+					case <-time.After(500 * time.Millisecond):
+
+					}
 				}
 			}
 		}(i, source)
 	}
 
-	//this block ensures that we will exit if everything is done.
-	go func() {
+	var tctr int
 
+	go func(){
 		wg.Wait()
-		close(waitCh)
+		select {
+		case finished <- true:
+			break
+		case <-time.After(500 * time.Millisecond):
 
+		}
 	}()
 
-	var tctr int
-	check := true
-
 	for {
-
-		if tctr >= threshold && threshold > 0 && check == true {
-			close(done)
-			check = false
-		}
-
 		select {
+		//ensures we always die if there is some odd issue witha  hang
+		case <-time.After(60 * time.Second):
+			return results
 		case res := <-lookupResult:
 			if res.Listed == true {
 				tctr++
@@ -285,11 +289,12 @@ func BulkLookup(ip string, threshold int, dur time.Duration) []Result {
 			if len(res.Rbl) > 0 {
 				results = append(results, res)
 			}
-		case <-done:
+			if tctr>threshold {
+				return results
+			}
+		case <-finished:
 			return results
 		case <-timeLimit:
-			return results
-		case <-waitCh:
 			return results
 		}
 	}
