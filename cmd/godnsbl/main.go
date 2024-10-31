@@ -34,7 +34,7 @@ func main() {
 
 	if pd != nil {
 
-		pdur = 0
+		pdur = time.Millisecond * 500
 
 	}
 

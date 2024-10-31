@@ -12,6 +12,7 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"context"
 	"sync"
 	"time"
 )
@@ -191,6 +192,8 @@ var Debug bool
 
 var Blacklists []string
 
+var resolver net.Resolver
+
 func init(){
 
 	Blacklists = BlacklistsDefault
@@ -230,6 +233,14 @@ Reverse the octets of a given IPv4 address
 64.233.171.108 becomes 108.171.233.64
 */
 
+func init() {
+
+	resolver = net.Resolver{
+		Dial: GoogleDNSDialer,
+	}
+
+}
+
 func SkipList(skip_src []string) {
 
 	skip = skip_src
@@ -255,8 +266,8 @@ func query(rbl string, host string, r *Result) {
 	r.Rbl = rbl
 
 	lookup := fmt.Sprintf("%s.%s", host, rbl)
-
-	res, err := net.LookupHost(lookup)
+	ctx := context.Background()
+	res, err := resolver.LookupHost(ctx,lookup)
 	if len(res) > 0 {
 
 		for _, ip := range res {
@@ -273,7 +284,8 @@ func query(rbl string, host string, r *Result) {
 			}
 		}
 
-		txt, _ := net.LookupTXT(lookup)
+		ctx2 := context.Background()
+		txt, _ := resolver.LookupTXT(ctx2,lookup)
 		if len(txt) > 0 {
 			r.Text = txt[0]
 		}
@@ -294,7 +306,9 @@ func Lookup(rblList string, targetHost string) RBLResults {
 	r.List = rblList
 	r.Host = targetHost
 
-	if ip, err := net.LookupIP(targetHost); err == nil {
+	ctx := context.Background()
+	
+	if ip, err := resolver.LookupIP(ctx,targetHost); err == nil {
 
 		for _, addr := range ip {
 			if addr.To4() != nil {
@@ -408,3 +422,9 @@ func inSlice(s []string, str string) bool {
 
 	return false
 }
+
+func GoogleDNSDialer(ctx context.Context, network, address string) (net.Conn, error) {
+	d := net.Dialer{}
+	return d.DialContext(ctx, "udp", "8.8.8.8:53")
+}
+
