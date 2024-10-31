@@ -308,7 +308,7 @@ func Lookup(rblList string, targetHost string) RBLResults {
 
 	ctx := context.Background()
 	
-	if ip, err := resolver.LookupIP(ctx,targetHost); err == nil {
+	if ip, err := resolver.LookupIP(ctx,"ip",targetHost); err == nil {
 
 		for _, addr := range ip {
 			if addr.To4() != nil {

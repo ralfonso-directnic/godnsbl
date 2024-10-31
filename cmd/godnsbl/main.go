@@ -7,7 +7,7 @@ import (
     "time"
 	"os"
     "flag"
-	"github.com/mrichman/godnsbl"
+	"github.com/ralfonso-directnic/godnsbl"
 )
 
 var thold int
